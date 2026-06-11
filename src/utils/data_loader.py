@@ -303,6 +303,7 @@ class MarketDataLoader:
             df = df.dropna(subset=["strike", "impliedVolatility"])
             df = df[df["impliedVolatility"] > 0]
             df = df[df["T"] > 0]
+            df = df[df["mid"] > 0]
 
             if min_volume > 0:
                 df = df[df["volume"].fillna(0) >= min_volume]
@@ -508,7 +509,7 @@ class MarketDataLoader:
         print(f"[data_loader] Saved to {path}")
 
     @classmethod
-    def load(cls, path: str | Path, fred_api_key: Optional[str] = None) -> "MarketDataLoader":
+    def load(cls, path: str | Path, fred_api_key: str="") -> "MarketDataLoader":
         """Load a previously saved MarketDataLoader from disk."""
         with open(path, "rb") as f:
             payload = pickle.load(f)
