@@ -130,10 +130,13 @@ curve = loader.get_yield_curve() # full term structure
 
 The Black-Scholes-Merton framework rests on seven assumptions.
 1. **Geometric Brownian Motion**. The asset price follows GBM under the real-world probability measure P:
+
 $$
 dS = \mu S dt + \sigma S dW_t = \mu S dt + \sigma S \epsilon \sqrt(dt)
 $$
+
 implying log-returns are normally distributed:
+
 $$
 ln \frac{S_T}{S_0} \follow N(\frac{\mu - \sigma^2}{2} T, \sigma^2 T)
 $$
@@ -152,10 +155,13 @@ $$
 *Extensions in this project*: Short rate models (Vasicek, CIR, Ho-Lee, Hull-White) model r as a stochastic process and price bonds, caps, floors, and swaptions consistently with the yield curve.
 
 4. **No arbitrage and complete markets**. The market is assumed to be complete, which means any contingent claim can be replicated by a self-financing portfolio of the stock and risk-free bond. Under this condition, the unique risk-neutral measure Q exists and the no-arbitrage price of any derivative is:
+
 $$
 V(t) = e^{-r(T-t)} \mathbb{E}^{\mathbb{Q} (\text{Payoff}(S_T) | F(t))}
 $$
+
 Under Q, the drift of S is replaced by (r - q):
+
 $$
 dS = (r - q) S dt + \sigma S dW_t^\mathbb{Q}
 $$
@@ -192,6 +198,7 @@ $$
 **N(d2)** is risk-neutral probability that S_T > K, which means option expires in the money. **N(d1)** is the delta of the call option, the shares of stock in the replicating portfolio. $K e^{-rT} N(d2)$ is the present value of paying strike K conditional on exercise, whereas $S e^{-qT} N(d1)$ is the present value of receiving the stock conditional on exercise.
 
 **Put-Call Parity**: This relationship holds regardless of the model. Violations in market data indicate arbitrage opportunities or data errors.
+
 $$
 C - P = S e^{-qT} - K e^{-rT}
 $$
