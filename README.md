@@ -132,13 +132,13 @@ The Black-Scholes-Merton framework rests on seven assumptions.
 1. **Geometric Brownian Motion**. The asset price follows GBM under the real-world probability measure P:
 
 $$
-dS = \mu S dt + \sigma S dW_t = \mu S dt + \sigma S \epsilon \sqrt(dt)
+dS = \mu ~ S ~ dt + \sigma ~ S ~ dW_t = \mu ~ S ~ dt + \sigma ~ S ~ \epsilon ~ \sqrt{dt}
 $$
 
 implying log-returns are normally distributed:
 
 $$
-ln \frac{S_T}{S_0} \follow N(\frac{\mu - \sigma^2}{2} T, \sigma^2 T)
+ln (\frac{S_T}{S_0}) \sim N(\frac{\mu - \sigma^2}{2} T, ~ \sigma^2 T)
 $$
 
 *Limitation*: Real return distributions exhibit fat tails (leptokurtosis) and negative skew, which GBM cannot capture.
@@ -157,13 +157,13 @@ $$
 4. **No arbitrage and complete markets**. The market is assumed to be complete, which means any contingent claim can be replicated by a self-financing portfolio of the stock and risk-free bond. Under this condition, the unique risk-neutral measure Q exists and the no-arbitrage price of any derivative is:
 
 $$
-V(t) = e^{-r(T-t)} \mathbb{E}^{\mathbb{Q} (\text{Payoff}(S_T) | F(t))}
+V(t) = e^{-r(T-t)} ~ \mathbb{E}^{ \mathbb{Q} (\text{Payoff}(S_T) | F(t))}
 $$
 
 Under Q, the drift of S is replaced by (r - q):
 
 $$
-dS = (r - q) S dt + \sigma S dW_t^\mathbb{Q}
+dS = (r - q)~ S ~ dt + \sigma ~ S ~ dW_t^\mathbb{Q}
 $$
 
 5. **Continuous trading, no transaction costs**. The replicating portfolio can be rebalanced continuously at zero cost.
@@ -189,10 +189,10 @@ $$
 P = K e^{-rT} N(-d2) - S e^{-qT} N(-d1)
 $$
 $$
-d1 = \frac{[ ln(\frac{S}{K}) + (r - q + \sigma^2/2) T ]}{(\sigma \sqrt(T))}
+d1 = \frac{[ ln(S / K) + (r - q + \frac{1}{2} \sigma^) T ]}{(\sigma \sqrt{T})}
 $$
 $$
-d2 = d1 - \sigma \sqrt(T)
+d2 = d1 - \sigma \sqrt{T}
 $$
 
 **N(d2)** is risk-neutral probability that S_T > K, which means option expires in the money. **N(d1)** is the delta of the call option, the shares of stock in the replicating portfolio. $K e^{-rT} N(d2)$ is the present value of paying strike K conditional on exercise, whereas $S e^{-qT} N(d1)$ is the present value of receiving the stock conditional on exercise.
