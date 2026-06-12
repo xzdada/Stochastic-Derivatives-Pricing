@@ -234,10 +234,10 @@ $$
 V = e^{-rT} \cdot (\frac{1}{N}) \sum{\text{Payoff}(S_T^i)}
 $$
 
-By the law of large numbers, this converges to the true price as $ N \rightarrow \inf $. The standard error shrinks at the rate $ \mathbf{\frac{1}{\sqrt{N}} $.
+By the law of large numbers, this converges to the true price as $N \rightarrow \inf$. The standard error shrinks at the rate $\mathbf{\frac{1}{\sqrt{N}}$.
 
 Note that Geometric Brownian Motion (GBM) has a closed-form solution, so paths are simulated without any discretisation error regardless of the number of steps:
 
 $$
-S(t + \Delta t) = S(t) · exp( (r - q - \sigma ^2 /2) \Delta t  +  \sigma \sqrt{\Delta t} \cdot Z )    Z \sim N(0,1)
+S(t + \Delta t) = S(t) · \exp( (r - q - \frac{\sigma ^2} / {2}) \Delta t  +  \sigma \sqrt{\Delta t} \cdot Z ), ~~  Z \sim N(0,1)
 $$
