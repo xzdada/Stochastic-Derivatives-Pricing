@@ -29,13 +29,13 @@ stochastic-derivative-pricing/
 │ │ │ ├── jump_diffusion.py # Merton / Kou
 │ │ │ ├── local_vol.py # Dupire local vol surface
 │ │ │ └── garch.py # GARCH(1,1) realized vol
-│ │ └── rates/
-│ │ ├── base_short_rate.py # abstract ShortRateModel
-│ │ ├── vasicek.py
-│ │ ├── cir.py
-│ │ ├── ho_lee.py
-│ │ ├── hull_white.py
-│ │ └── hjm.py
+│ │ ├── rates/
+│ │ │ ├── base_short_rate.py # abstract ShortRateModel
+│ │ │ ├── vasicek.py
+│ │ │ ├── cir.py
+│ │ │ ├── ho_lee.py
+│ │ │ ├── hull_white.py
+│ │ │ ├── hjm.py
 │ ├── engines/ # numerical pricing engines
 │ │ ├── analytical.py # BSM, Black-76, Bachelier
 │ │ ├── monte_carlo.py # base MC engine + path generator
@@ -195,7 +195,7 @@ $$
 d2 = d1 - \sigma \sqrt{T}
 $$
 
-**N(d2)** is risk-neutral probability that S_T > K, which means option expires in the money. **N(d1)** is the delta of the call option, the shares of stock in the replicating portfolio. $K e^{-rT} N(d2)$ is the present value of paying strike K conditional on exercise, whereas $S e^{-qT} N(d1)$ is the present value of receiving the stock conditional on exercise.
+**N(d2)** is risk-neutral probability that $S_T > K$, which means option expires in the money. **N(d1)** is the delta of the call option, the shares of stock in the replicating portfolio. $K e^{-rT} N(d2)$ is the present value of paying strike K conditional on exercise, whereas $S e^{-qT} N(d1)$ is the present value of receiving the stock conditional on exercise.
 
 **Put-Call Parity**: This relationship holds regardless of the model. Violations in market data indicate arbitrage opportunities or data errors.
 
@@ -225,3 +225,19 @@ All Greeks are implemented analytically in `src/engines/analytical.py`.
 | Vanna | $\frac{\partial^2 V}{\partial S \partial \sigma}$ | Cross-sensitivity of Delta to volatility |
 | Volga | $\frac{\partial^2 V}{\partial \sigma^2}$ | Rate of change of Vega |
 | Charm | $\frac{\partial^2 V}{\partial S \partial t}$ | Rate of change of Delta over time |
+
+### Monte Carlo Simulation
+
+Monte Carlo prices a derivative by simulating a large number of asset price paths under the risk-neutral measure $ \mathbb{Q} $, computing the payoff on each path, and taking the discounted average:
+
+$$
+V = e^{-rT} \cdot (\frac{1}{N}) \sum{\text{Payoff}(S_T^i)}
+$$
+
+By the law of large numbers, this converges to the true price as $ N \rightarrow \inf $. The standard error shrinks at the rate $ \mathbf{\frac{1}{\sqrt{N}} $.
+
+Note that Geometric Brownian Motion (GBM) has a closed-form solution, so paths are simulated without any discretisation error regardless of the number of steps:
+
+$$
+S(t + \Delta t) = S(t) · exp( (r - q - \sigma ^2 /2) \Delta t  +  \sigma \sqrt{\Delta t} \cdot Z )    Z \sim N(0,1)
+$$
