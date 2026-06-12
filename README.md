@@ -175,11 +175,17 @@ $$
 ### Pricing Formula
 
 Under the risk-neutral measure $\mathbb{Q}$ with continuous dividend yield q:
+
 $$
 C = S e^{-qT} N(d1) - K e^{-rT} N(d2)
+$$
+$$
 P = K e^{-rT} N(-d2) - S e^{-qT} N(-d1)
-
+$$
+$$
 d1 = \frac{[ ln(\frac{S}{K}) + (r - q + \sigma^2/2) T ]}{(\sigma \sqrt(T))}
+$$
+$$
 d2 = d1 - \sigma \sqrt(T)
 $$
 
