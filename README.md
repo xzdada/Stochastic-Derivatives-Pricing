@@ -260,7 +260,9 @@ The technique uses a correlated quantity with a known expected value to correct 
 
 $$
 Y^* = Y − \beta ^* (X − \mu_X)
+$$
 
+$$
 \beta ^* = Cov(Y, X) / Var(X), ~~~~~~~~~~ \text{(estimated from the same paths)}
 $$
 
