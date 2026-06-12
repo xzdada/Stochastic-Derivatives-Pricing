@@ -217,14 +217,14 @@ All Greeks are implemented analytically in `src/engines/analytical.py`.
 
 | Greek | Formula | Interpretation |
 |--------|--------------------------|------------------------------------------------|
-| Delta | $\frac{\partial V}{\partial S}$ | Change in option price for a \$1 move in spot |
-| Gamma | $\frac{\partial^2 V}{\partial S^2}$ | Rate of change of Delta; measures convexity |
-| Vega | $\frac{\partial V}{\partial \sigma}$ | Change in option value with respect to volatility |
-| Theta | $\frac{\partial V}{\partial t}$ | Time decay of option value |
-| Rho | $\frac{\partial V}{\partial r}$ | Sensitivity to risk-free rate |
-| Vanna | $\frac{\partial^2 V}{\partial S \partial \sigma}$ | Cross-sensitivity of Delta to volatility |
-| Volga | $\frac{\partial^2 V}{\partial \sigma^2}$ | Rate of change of Vega |
-| Charm | $\frac{\partial^2 V}{\partial S \partial t}$ | Rate of change of Delta over time |
+| Delta | **$\frac{\partial V}{\partial S}$** | Change in option price for a \$1 move in spot |
+| Gamma | **$\frac{\partial^2 V}{\partial S^2}$** | Rate of change of Delta; measures convexity |
+| Vega | **$\frac{\partial V}{\partial \sigma}$** | Change in option value with respect to volatility |
+| Theta | **$\frac{\partial V}{\partial t}$** | Time decay of option value |
+| Rho | **$\frac{\partial V}{\partial r}$** | Sensitivity to risk-free rate |
+| Vanna | **$\frac{\partial^2 V}{\partial S \partial \sigma}$** | Cross-sensitivity of Delta to volatility |
+| Volga | **$\frac{\partial^2 V}{\partial \sigma^2}$** | Rate of change of Vega |
+| Charm | **$\frac{\partial^2 V}{\partial S \partial t}$** | Rate of change of Delta over time |
 
 ### Monte Carlo Simulation
 
@@ -234,7 +234,7 @@ $$
 V = e^{-rT} \cdot (\frac{1}{N}) \sum{\text{Payoff}({S_T}^i)}
 $$
 
-By the law of large numbers, this converges to the true price as $N \rightarrow \inf$. The standard error shrinks at the rate $\mathbf{\frac{1}{\sqrt{N}}}$.
+By the law of large numbers, this converges to the true price as $N \rightarrow \infty$. The standard error shrinks at the rate **$\frac{1}{\sqrt{N}}$**.
 
 Note that Geometric Brownian Motion (GBM) has a closed-form solution, so paths are simulated without any discretisation error regardless of the number of steps:
 
