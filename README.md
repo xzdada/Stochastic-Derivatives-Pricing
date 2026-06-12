@@ -241,3 +241,33 @@ Note that Geometric Brownian Motion (GBM) has a closed-form solution, so paths a
 $$
 S(t + \Delta t) = S(t) · \exp( (r - q - \frac{\sigma ^2}{2}) \Delta t  +  \sigma \sqrt{\Delta t} \cdot Z ), ~~  Z \sim N(0,1)
 $$
+
+#### Variance Reduction
+
+The **$1 / \sqrt{N}$** convergence rate of standard MC is slow. Specifically, halving the error requires 4 times as many paths. This project will incorporate several variance reduction techniques to achieve lower error.
+
+- Antithetic variates
+For each random draw Z, we also simulate with −Z. The two paths are negatively correlated, so averaging their payoffs cancels much of the noise:
+
+$$
+\text{payoff}_i = \frac{ \text{Payoff}(Z_i) + \text{Payoff}(−Z_i)}{2}
+$$
+
+By using antithetic variates technique, the variance reduction is greatest when the payoff is a monotone function of the terminal price (vanilla calls and puts).
+
+- Control variates
+The technique uses a correlated quantity with a known expected value to correct the MC estimate. For a European option under GBM, the BSM price is the natural control:
+
+$$
+Y^* = Y − \beta ^* (X − \mu_X)
+
+\beta ^* = Cov(Y, X) / Var(X), ~~~~~~~~~~ \text{(estimated from the same paths)}
+$$
+
+where Y is the simulated discounted payoff, X is the BSM payoff on the same paths, and $\mu_X$ is the analytical BSM price. The variance of $Y^*$ is:
+
+$$
+Var(Y^*) = Var(Y) \cdot (1 − \rho_{XY}^2)
+$$
+
+For GBM + European option, $\rho=1$ and the estimator collapses exactly to the BSM analytical price, confirming correctness. The technique shows its value for path-dependent products (Asian, barrier) where the target payoff and BSM control are highly but not perfectly correlated.
