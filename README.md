@@ -82,7 +82,7 @@ stochastic-derivative-pricing/
 │ └── 09_model_comparison.ipynb
 ├── tests/ # unit + integration tests
 │ ├── test_analytical.py # BSM vs known values
-│ ├── test_mc_convergence.py # MC price → analytical as N→inf
+│ ├── test_mc_convergence.py # MC price -> analytical as N approach inf
 │ ├── test_greeks.py # bump-and-reprice vs closed form
 │ └── test_parity.py # put-call parity violations
 ├── requirements.txt
