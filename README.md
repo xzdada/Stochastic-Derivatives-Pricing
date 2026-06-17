@@ -273,3 +273,144 @@ Var(Y^*) = Var(Y) \cdot (1 − \rho_{XY}^2)
 $$
 
 For GBM + European option, $\rho=1$ and the estimator collapses exactly to the BSM analytical price, confirming correctness. The technique shows its value for path-dependent products (Asian, barrier) where the target payoff and BSM control are highly but not perfectly correlated.
+
+### American Options & Early Exercise
+
+An American option gives the holder the right to exercise at any time $t \in [0, T]$. This creates an optimal stopping problem:
+
+$$
+V(t, S) = \sup_{\tau \in [t,T]} E^\mathbb{Q}\!\left[ e^{-r(\tau-t)} \mathrm{Payoff}(S_\tau) \mid S_t \right]
+$$
+
+The American option price always satisfies $V_{\text{am}} \ge V_{\text{eu}}$; the difference is the early exercise premium (EEP):
+
+$$
+\mathrm{EEP} = V_{\text{American}} - V_{\text{European}} \ge 0
+$$
+
+Early exercise optimality depends on the contract:
+
+- **American call (no dividends):** EEP = 0. Exercising early forfeits the option's remaining time value; it is always better to sell than exercise.
+- **American put:** EEP > 0. Receiving the strike early and earning interest on the cash dominates waiting.
+- **American call (with dividends, $q > 0$):** EEP may be > 0. Not holding the stock means forfeiting dividend income, which can make early exercise worthwhile.
+
+No closed-form solution exists for American options. Three numerical methods are implemented and cross-validated in this project:
+
+**Method 1 — Binomial CRR Tree** ([src/engines/trees.py](src/engines/trees.py))
+
+Cox, Ross and Rubinstein discretise GBM onto a recombining lattice. At each step $\Delta t = T/N$:
+
+$$
+u = \exp(\sigma \sqrt{\Delta t}), \qquad d = 1/u
+$$
+
+$$
+p = \frac{e^{(r-q)\Delta t} - d}{u - d} \quad \text{(risk-neutral up probability)}
+$$
+
+Backward induction with early exercise check at every node:
+
+$$
+V_{n,j} = \max\!\left( \mathrm{Intrinsic}_{n,j},\ e^{-r\Delta t}\left[p\cdot V_{n+1,j+1} + (1-p)\cdot V_{n+1,j}\right] \right)
+$$
+
+The tree converges to BSM as $N \to \infty$ with oscillating $O(1/N)$ error. Greeks are computed via bump-and-reprice (central differences).
+
+**Method 2 — Longstaff-Schwartz LSM** ([src/engines/lsm.py](src/engines/lsm.py))
+
+Longstaff and Schwartz estimate the continuation value at each exercise date by regressing discounted future cash flows onto basis functions of the current stock price (polynomial basis by default):
+
+$$
+E^Q\!\left[e^{-r\Delta t} V_{k+1} \mid S_k\right] \approx \sum_i \alpha_i \cdot S_k^i
+$$
+
+Only in-the-money paths are used for regression because out-of-the-money paths trivially continue. The optimal exercise policy is found by comparing the regression estimate against the immediate exercise value.
+
+LSM produces a low-biased price estimate — the regression policy is sub-optimal relative to the true exercise boundary.
+
+**Method 3 — Crank-Nicolson Finite Differences** ([src/engines/finite_diff.py](src/engines/finite_diff.py))
+
+Discretises the BSM PDE on a uniform $(S, t)$ grid and solves backward in time using the Crank-Nicolson scheme, which averages the explicit and implicit steps to yield a tridiagonal system at each time step:
+
+$$
+\frac{1}{2}\mathcal{L}^{\text{explicit}} + \frac{1}{2}\mathcal{L}^{\text{implicit}} \;\longrightarrow\; A\mathbf{V}^{j} = \mathbf{b}^{j}
+$$
+
+American early exercise is enforced via projected SOR (PSOR): after each linear solve, values are projected onto the free-boundary constraint:
+
+$$
+V_i^j = \max\!\left(V_i^j,\ \mathrm{Intrinsic}_i^j\right)
+$$
+
+Crank-Nicolson is unconditionally stable and second-order accurate in both $S$ and $t$. It is the most accurate of the three methods for smooth payoffs.
+
+### Heston Stochastic Volatility Model
+
+BSM assumes constant volatility, but market implied vols vary across strikes and maturities (the volatility smile/skew). The Heston model let volatility itself follow a stochastic process, producing a richer implied volatility surface that better matches market prices.
+
+Under the risk-neutral measure Q, asset price S and instantaneous variance v follow coupled SDEs:
+
+$$
+dS_t = (r - q) S_t dt + \sqrt(v_t) S_t dW_t^S
+$$
+$$
+dv_t = \text{kappa} * (\theta - v_t) dt + \xi * \sqrt(v_t) dW_t^v
+$$
+$$
+Corr(dW_t^S, dW_t^v) = \rho
+$$
+
+#### Parameters
+
+|                      |    Symbol     |   Interpretation   |
+|----------------------|---------------|-----------------------|
+| Mean-reversion Speed | $ \Kappa $  | How fast $v_t$ reverts to theta|
+| Long-run Variance | $ \theta $ | Long-run mean of $ v_t \cdot sqrt(theta) $ |
+| Vol-of-vol | $ \xi $ | Volatility of the variance process. Higher means more pronounced smile. |
+| Correlation | $ \rho $ | Correkation between spot price and volatility. Negative for equities (leverage effect). |
+| Initial variance | $ v_0 $ | Starting value of $ v_t \cdot sqrt(v0) $, current implied vol. |
+
+#### Simulation: Euler Discretisation with Full Truncation
+
+**Feller condition.** The variance process remains strictly positive almost surely if and only if:
+
+$$2\kappa\theta > \xi^2$$
+
+When this fails, $v_t$ can reach zero. We apply **full truncation** — replacing $v_t$ with $v^+ = \max(v_t, 0)$ before each update — to keep the simulation numerically stable regardless.
+
+**Correlated shocks** via Cholesky decomposition:
+
+$$\varepsilon_S = Z_S, \qquad \varepsilon_v = \rho\,Z_S + \sqrt{1-\rho^2}\,Z_v, \qquad Z_S, Z_v \overset{\text{i.i.d.}}{\sim} \mathcal{N}(0,1)$$
+
+**Variance update** (Euler, with full truncation):
+
+$$v_{t+\Delta t} = v_t + \kappa(\theta - v^+)\,\Delta t + \xi\sqrt{v^+\,\Delta t}\;\varepsilon_v$$
+
+**Asset price update** (exact log-normal conditioned on $v_t$, no discretisation bias):
+
+$$S_{t+\Delta t} = S_t \exp\!\left[\left(r - q - \frac{v^+}{2}\right)\Delta t + \sqrt{v^+\,\Delta t}\;\varepsilon_S\right]$$
+
+#### Volatility Smile Intuition
+
+$\rho$ and $\xi$ are the primary drivers of the implied vol surface shape.
+
+- **$\rho < 0$ (typical for equities):** when variance spikes, the stock tends to fall due to the leverage effect. This creates a negative skew — OTM puts carry higher implied vol than OTM calls.
+- **Large $\xi$ (vol-of-vol):** high variance-of-variance fattens the tails symmetrically, raising implied vol for deep OTM options on both sides and producing more pronounced smile curvature.
+
+### Heston Calibration
+
+Given market implied vols across strikes and maturities, we find the 5 Heston parameters that best reproduce the observed smile:
+
+$$
+\min_{\kappa,\,\theta,\,\xi,\,\rho,\,v_0} \sum_i w_i \left(\sigma_i^{\text{model}} - \sigma_i^{\text{mkt}}\right)^2
+$$
+
+Minimising implied volatility error rather than price error is market convention — it treats each point on the smile equally regardless of moneyness.
+
+This project uses **two-stage optimisation**:
+
+- **Stage 1 — Differential Evolution (global):** stochastic population-based search over the 5-dimensional parameter box. Avoids local minima on the non-convex loss surface. Slower but robust.
+- **Stage 2 — L-BFGS-B (local):** gradient-based refinement starting from the DE result. Fast convergence to high precision once within the basin of the global minimum.
+
+Note that the Heston loss surface has multiple near-equivalent minima, particularly in the $(\kappa, \theta)$ subspace — a high $\kappa$ with low $\theta$ can produce a similar smile to a low $\kappa$ with high $\theta$. This is a fundamental identifiability issue, not a numerical one.
+
