@@ -10,8 +10,11 @@ A from-scratch quantitative finance library for derivative pricing, risk managem
     - BSM Model Assumptions
     - Pricing Formulas
     - Greeks
+    - Monte Carlo Simulation
+    - American Options & Early Exercise
+    - Heston Stochastic Volatility Model
+    - Interest Rate Models
 - Modules
-- Build Phases
 
 ## Project Structure
 
@@ -36,6 +39,7 @@ stochastic-derivative-pricing/
 │ │ │ ├── ho_lee.py
 │ │ │ ├── hull_white.py
 │ │ │ ├── hjm.py
+| | | └── gaussian_plus.py
 │ ├── engines/ # numerical pricing engines
 │ │ ├── analytical.py # BSM, Black-76, Bachelier
 │ │ ├── monte_carlo.py # base MC engine + path generator
@@ -413,4 +417,103 @@ This project uses **two-stage optimisation**:
 - **Stage 2 — L-BFGS-B (local):** gradient-based refinement starting from the DE result. Fast convergence to high precision once within the basin of the global minimum.
 
 Note that the Heston loss surface has multiple near-equivalent minima, particularly in the $(\kappa, \theta)$ subspace — a high $\kappa$ with low $\theta$ can produce a similar smile to a low $\kappa$ with high $\theta$. This is a fundamental identifiability issue, not a numerical one.
+
+### Interest Rate Models (Short Rate Models)
+
+BSM assumes a constant risk-free rate. For long-dated options and any interest-rate-sensitive instrument — bonds, swaps, caps, swaptions — the stochastic evolution of rates matters. Short rate models specify the dynamics of the instantaneous rate $r(t)$ and derive the entire yield curve and derivative prices under a single no-arbitrage framework.
+
+#### Vasicek Model
+
+$$
+dr_t = a(b - r_t)\,dt + \sigma\,dW_t
+$$
+
+$a > 0$ is the mean-reversion speed; $b$ is the long-run level the rate reverts to; $\sigma$ is the constant volatility. The drift term $a(b - r_t)$ is self-correcting: it is positive when $r_t < b$ and negative when $r_t > b$, pulling the rate back toward $b$ at a rate proportional to both the displacement and $a$.
+
+Like BSM, $r_t$ is Gaussian under Vasicek, which means rates can become negative — a known limitation.
+
+The closed-form zero-coupon bond price is:
+
+$$
+P(0,T) = A(T)\,\exp(-B(T)\,r_0)
+$$
+$$
+B(T) = \frac{1 - e^{-aT}}{a}, \qquad A(T) = \exp\!\left[\left(b - \frac{\sigma^2}{2a^2}\right)(B(T) - T) - \frac{\sigma^2 B(T)^2}{4a}\right]
+$$
+
+#### CIR — Cox-Ingersoll-Ross Model
+
+CIR replaces Vasicek's constant diffusion with a square-root term, ensuring $r_t$ remains non-negative:
+
+$$
+dr_t = a(b - r_t)\,dt + \sigma\sqrt{r_t}\,dW_t
+$$
+
+**Feller condition:** $2ab \ge \sigma^2$ guarantees $r_t > 0$ almost surely. When violated, $r_t$ can reach zero; full truncation ($\max(r_t, 0)$ before the square root) is used for simulation — identical in spirit to the Heston variance process.
+
+At $r_t = 0$ the diffusion vanishes while the drift $ab\,dt > 0$ remains positive, so zero is a reflecting boundary rather than an absorbing one.
+
+The closed-form bond price retains the $A(T)\exp(-B(T)\,r_0)$ structure, with $A$ and $B$ solving the CIR Riccati ODEs:
+
+$$
+B(T) = \frac{2(e^{\gamma T}-1)}{(\gamma+a)(e^{\gamma T}-1)+2\gamma}, \qquad \gamma = \sqrt{a^2 + 2\sigma^2}
+$$
+
+#### Ho-Lee Model
+
+$$
+dr_t = \lambda(t)\,dt + \sigma\,dW_t
+$$
+
+$\lambda(t)$ is a deterministic, time-dependent drift calibrated to exactly fit the initial market yield curve. With no mean reversion, $r_t$ is a pure drifted random walk and can wander arbitrarily far from $r_0$ over long horizons — the main limitation of this model.
+
+#### Hull-White — Extended Vasicek
+
+Hull-White adds mean reversion to Ho-Lee, inheriting exact yield-curve fitting while keeping rates anchored:
+
+$$
+dr_t = [\lambda(t) - a\,r_t]\,dt + \sigma\,dW_t
+$$
+
+When $\lambda(t) = ab$ (constant), Hull-White reduces exactly to Vasicek$(r_0, a, b, \sigma)$.
+
+#### Three-Factor Cascade Gaussian+ Model
+
+Single-factor short rate models share a structural limitation: every point on the yield curve is driven by the same random shock, so all maturities move in lockstep and are perfectly correlated. Real yield curves do not behave this way. Empirically, a principal component analysis of historical yield curve changes typically reveals three dominant factors: short-term, medium-term, and long-term moves. This model captures that structure with a hierarchical (cascade) dependency: the short rate reverts toward a medium-term factor, which in turn reverts toward a long-term factor, which reverts toward a fixed long-run mean $r \leftarrow m \leftarrow L \leftarrow \mu$.
+
+$$
+dr = a_r(m - r)\,dt \qquad \text{(no diffusion term)}
+$$
+$$
+dm = a_m(L - m)\,dt + \sigma_m\!\left(\rho\,dW_1 + \sqrt{1-\rho^2}\,dW_2\right)
+$$
+$$
+dL = a_L(\mu - L)\,dt + \sigma_L\,dW_1
+$$
+
+$W_1$ and $W_2$ are independent Brownian motions.
+
+| Symbol | Role |
+|---|---|
+| $r$ | Short-term rate |
+| $m$ | Medium-term factor |
+| $L$ | Long-term factor |
+| $\mu$ | Fixed long-run mean that $L$ reverts to |
+| $a_r, a_m, a_L$ | Mean-reversion speeds for $r$, $m$, $L$ |
+| $\sigma_m, \sigma_L$ | Volatilities of the medium- and long-term factors |
+| $\rho$ | Correlation loading of $dW_1$ in the $m$ dynamics |
+
+Unlike a parallel multi-factor model where each factor has its own diffusion, $r$'s only source of randomness is inherited through its mean-reversion drift toward $m$. This keeps short-rate volatility low and matches the empirically observed humped-shaped term structure of volatility. $r$ is effectively a smoothed version of $m$, which is itself a smoothed version of $L$ — producing a genuine hierarchical term-structure model rather than three independently-shocked factors summed together.
+
+Because each factor's drift depends only on the factor below it, the system is simulated sequentially per time step:
+
+- **Update $L$** using its exact one-factor OU transition (Gaussian, no bias).
+- **Update $m$** using its exact OU transition toward the just-updated $L$, with diffusion driven by the correlated pair $(dW_1, dW_2)$.
+- **Update $r$** using exact deterministic relaxation toward the just-updated $m$ (no diffusion of its own).
+
+Because $r(t)$ is not a simple linear combination of independent Gaussian factors with constant coefficients (the cascade drift makes $r$'s distribution depend on nested time-integrals of $m$ and $L$), bond prices are computed via Monte Carlo:
+
+$$
+P(0,T) = \mathbb{E}^{\mathbb{Q}}\!\left[\exp\!\left(-\int_0^T r_s\,ds\right)\right]
+$$
 
