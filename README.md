@@ -14,6 +14,9 @@ A from-scratch quantitative finance library for derivative pricing, risk managem
     - American Options & Early Exercise
     - Heston Stochastic Volatility Model
     - Interest Rate Models
+    - Greeks
+    - Hedging Simulation
+    - Portfolio Risk (VaR, ES)
 - Modules
 
 ## Project Structure
@@ -68,7 +71,7 @@ stochastic-derivative-pricing/
 │ ├── risk/
 │ │ ├── greeks.py # analytical + finite-diff Greeks
 │ │ ├── delta_hedge.py # discrete hedging simulation + PnL
-│ │ ├── portfolio.py # VaR, CVaR, Greeks aggregation
+│ │ ├── portfolio.py # VaR, CVaR
 │ │ └── parity.py # put-call parity, boundary checks
 │ └── utils/
 │ │ ├── data_loader.py # yfinance / CBOE data fetch
@@ -482,13 +485,13 @@ When $\lambda(t) = ab$ (constant), Hull-White reduces exactly to Vasicek$(r_0, a
 Single-factor short rate models share a structural limitation: every point on the yield curve is driven by the same random shock, so all maturities move in lockstep and are perfectly correlated. Real yield curves do not behave this way. Empirically, a principal component analysis of historical yield curve changes typically reveals three dominant factors: short-term, medium-term, and long-term moves. This model captures that structure with a hierarchical (cascade) dependency: the short rate reverts toward a medium-term factor, which in turn reverts toward a long-term factor, which reverts toward a fixed long-run mean $r \leftarrow m \leftarrow L \leftarrow \mu$.
 
 $$
-dr = a_r(m - r)\,dt \qquad \text{(no diffusion term)}
+dr = a_r(m - r)\dt \qquad \text{(no diffusion term)}
 $$
 $$
-dm = a_m(L - m)\,dt + \sigma_m\!\left(\rho\,dW_1 + \sqrt{1-\rho^2}\,dW_2\right)
+dm = a_m(L - m)\dt + \sigma_m\\left(\rho\dW_1 + \sqrt{1-\rho^2}\dW_2\right)
 $$
 $$
-dL = a_L(\mu - L)\,dt + \sigma_L\,dW_1
+dL = a_L(\mu - L)\dt + \sigma_L\dW_1
 $$
 
 $W_1$ and $W_2$ are independent Brownian motions.
@@ -514,6 +517,89 @@ Because each factor's drift depends only on the factor below it, the system is s
 Because $r(t)$ is not a simple linear combination of independent Gaussian factors with constant coefficients (the cascade drift makes $r$'s distribution depend on nested time-integrals of $m$ and $L$), bond prices are computed via Monte Carlo:
 
 $$
-P(0,T) = \mathbb{E}^{\mathbb{Q}}\!\left[\exp\!\left(-\int_0^T r_s\,ds\right)\right]
+P(0,T) = \mathbb{E}^{\mathbb{Q}}\\left[\exp\!\left(-\int_0^T r_s\,ds\right)\right]
 $$
 
+### Greeks & PnL Attribution
+
+Greeks measure the sensiticity of option price to changes in its inputs. They are the primary tools for risk management and dynamic hedging.
+
+#### Analytical Greeks (BSM)
+
+For European options under BSM, all Greeks have exact closed-form expressions as partial derivatives of the pricing formula. These are implemented in `src/engines/analytical.py` and exposed through the unified `GreeksCalculator` in `src/risk/greeks.py`.
+
+| Greek | Formula (with continuous dividend yield $q$) | Interpretation |
+|-------|----------------------------------------------|----------------|
+| Delta | Call: $e^{-qT}N(d_1)$ &nbsp; Put: $e^{-qT}(N(d_1)-1)$ | $\partial V/\partial S$ — price change per \$1 spot move; call $\in(0,1)$, put $\in(-1,0)$ |
+| Gamma | $\dfrac{e^{-qT}\,n(d_1)}{S\,\sigma\sqrt{T}}$ | $\partial^2 V/\partial S^2$ — convexity; rate of change of delta (identical for calls & puts) |
+| Vega | $S\,e^{-qT}\,n(d_1)\sqrt{T}$ | $\partial V/\partial\sigma$ — price change per unit vol move (identical for calls & puts) |
+| Theta | Call: $-\dfrac{S e^{-qT}n(d_1)\sigma}{2\sqrt{T}} - rKe^{-rT}N(d_2) + qSe^{-qT}N(d_1)$ &nbsp; (÷ 365 per day) | $\partial V/\partial t$ — time decay; typically negative as expiry approaches |
+| Rho | Call: $KTe^{-rT}N(d_2)$ &nbsp; Put: $-KTe^{-rT}N(-d_2)$ | $\partial V/\partial r$ — sensitivity to the risk-free rate |
+| Vanna | $-e^{-qT}\,n(d_1)\,\dfrac{d_2}{\sigma}$ | $\partial^2 V/\partial S\,\partial\sigma$ — cross-sensitivity of delta to vol (identical for calls & puts) |
+| Volga | $S\,e^{-qT}\,n(d_1)\sqrt{T}\,\dfrac{d_1 d_2}{\sigma}$ | $\partial^2 V/\partial\sigma^2$ — convexity of price in vol space; vol-of-vega (identical for calls & puts) |
+| Charm | Call: $-e^{-qT}\!\left[n(d_1)\dfrac{2(r-q)T - d_2\sigma\sqrt{T}}{2T\sigma\sqrt{T}} - q\,N(d_1)\right]$ &nbsp; (÷ 365 per day) | $\partial^2 V/\partial S\,\partial t$ — daily decay of delta; important for overnight hedgers |
+
+#### Bump-and-reprice (universal)
+
+For models without closed-form Greeks like the American options, Heston, etc., all Greeks are computed via central finite differences:
+
+$$
+\delta = [V(S+dS) - V(S-dS)] / (2*dS)  \qquad    dS = 1\% \text{ of S}
+\gamma = [V(S+dS) - 2V(S) + V(S-dS)] / dS^2
+\vega  = [V(\sigma + d\sigma) - V(\sigma - d\sigma)] / (2*d\sigma)  \qquad   d\sigma = 1\% of \sigma
+\theta = [V(T-dt) - V(T)] / dt / 365   \qquad     dt = 1 day
+\rho   = [V(r+dr) - V(r-dr)] / (2*dr)  \qquad    dr = 1 bp
+$$
+
+
+In `GreeksCalculator.greeks_surface()`, this project computes a 2D array of any Greek across a range of spot prices and maturities, useful for visualising how delta/gamma change as the option moves through moneyness.
+
+### Hedging Simulation
+
+Hedging a long call position means continuously selling delta shares of the underlying to stay delta-neutral. In practice rebalancing is discrete with daily, weekly, monthly manual, which introduces hedging error.
+
+Based on the Taylor expansion, the option value change can be decomposed as:
+
+$$
+dV \aprox \delta dS  +  \frac{1}{2} \gamma {dS}**2  +  \vega d\sigma  +  \theta dt  +  \epsilon
+$$
+
+Each term is accumulated (discounted) across all rebalancing steps:
+- Delta PnL: linear exposure to spot moves — cancelled by the hedge
+- Gamma PnL: convexity benefit from large spot moves (long option = long gamma)
+- Vega PnL: exposure to vol changes (zero under constant-vol GBM)
+- Theta PnL: time decay cost of holding the option
+- Residual: discrete hedging error (higher-order terms, rebalancing lag)
+
+### Portfolio Risk (VaR & CVaR)
+
+Value at Risk (VaR) answersthe question of 'what is the maximum loss not exceeded with probability p over a horizon?'
+
+$$ \mathbb{P}(\text{loss} > VaR) = 1 - \text{confidence} $$
+
+Conditional VaR (CVaR / Expected Shortfall) is the expected loss given that the loss exceeds VaR:
+
+$$ \text{CVaR} = \mathbb{E}[\text{loss} | \texr{loss} > \texr{VaR}] $$
+
+CVaR is always $\ge$ VaR and is a coherent risk measure, satisfies monotonicity, and sub-additivity, which VaR does not hold.
+
+#### Three estimation methods
+
+**Historical simulation**: sort observed P&L, and take the corresponding confidence quantile. No distributional assumption. Captures fat tails and skewness, but
+limited by available history.
+
+**Parametric (Gaussian)**： Tractable and transparent. Underestimates tail risk when returns are non-normal (fat tails, skew). The sqrt(horizon) scaling is the
+square-root-of-time rule, validated to machine precision in this project.
+
+$$
+\text{VaR}  = -(\mu - z_\alpha * \sigma) * \sqrt{\text{horizon}}
+$$
+$$
+\text{CVaR} = -(\mu - \sigma * \phi(z_\alpha) / (1-conf)) * \sqrt{\text{horizon}}
+$$
+
+**Monte Carlo**: simulate forward P&L under GBM, apply the empirical quantile. Incorporates model dynamics and can be extended to non-linear portfolios such as option positions.
+
+#### Square-root rule of time
+
+Under i.i.d. returns, h-day VaR = 1-day VaR * sqrt(h).
