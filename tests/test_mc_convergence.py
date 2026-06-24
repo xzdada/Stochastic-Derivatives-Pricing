@@ -139,7 +139,7 @@ class TestVarianceReduction:
         p = standard_params
         model = GBMModel(S0=p["S"], r=p["r"], sigma=p["sigma"], q=p["q"])
         product = EuropeanOption(**p, option_type="call")
-        engine = MCEngine(926)
+        engine = MCEngine(model=model, product=product, n_paths=100_000, seed=926)
 
         result_std = engine.price()
         result_cv  = engine.price_control_variate()
