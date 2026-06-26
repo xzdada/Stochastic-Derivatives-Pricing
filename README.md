@@ -12,6 +12,7 @@ A from-scratch quantitative finance library for derivative pricing, risk managem
     - Greeks
     - Monte Carlo Simulation
     - American Options & Early Exercise
+    - Exotic Options: Asian and Barrier
     - Heston Stochastic Volatility Model
     - Interest Rate Models
     - Greeks
@@ -353,6 +354,75 @@ V_i^j = \max\!\left(V_i^j,\ \mathrm{Intrinsic}_i^j\right)
 $$
 
 Crank-Nicolson is unconditionally stable and second-order accurate in both $S$ and $t$. It is the most accurate of the three methods for smooth payoffs.
+
+
+### Exotic Options: Asian and Barrier
+
+#### Asian options
+
+Payoff depends on the average price along the path rather than the terminal price alone:
+
+$$
+\text{average price call}:  \max(A - K, 0)  
+$$
+
+$$
+\text{average price put}:   \max(K - A, 0)  \qquad    \text{A = average of the path}
+$$
+
+$$
+\text{average strike call}: \max(S_T - A, 0)
+$$
+$$
+\text{average strike put}:  \max(A - S_T, 0)  \qquad   \text{A used as a floating strike}
+$$
+
+The arithmetic average of correlated log-normal draws is not itself log-normal, so there is no closed form for the standard (arithmetic) Asian option — it is priced via Monte Carlo. The geometric average, however, is log-normal, giving an exact Kemna & Vorst formula used here purely as a validation benchmark:
+
+$$
+\sigma_{avg} = \frac{\sigma}{\sqrt{3}}  \qquad  b_{avg} = 0.5*(\frac{r - q - \sigma^2}{6})
+$$
+
+A BSM-style formula then applies with these adjusted drift/vol terms.
+
+Validation result: Kemna-Vorst closed-form vs Monte Carlo on the same simulated paths agrees to within 0.0411 (300k paths, 252 steps).
+
+Asian vs. European price comparison (S=K=100, T=1y, r=5%, sigma=20%):
+|    Product        |      Price           |
+|------------------|------------------|
+| European call (BSM) | 10.4506 |
+| Asian average price call | 5.7215 |
+| Asian average strike call | 5.8576 |
+
+Both Asian variants are cheaper than the European option because averaging thr path reduces the effective volatility of the payoff-determining quantity (the average of many correlated draws has lower variance than a single terminal draw, so the embedded optionality is worth less.
+
+#### Barrier options (knock-in / knock-out)
+
+Payoff depends on whether the path touches a barrier level B at any point before expiry, in addition to the vanilla payoff at maturity. There are four variants based on the condition and direction: up-and-out, up-and-in, down-and-out, down-and-in.
+
+In-out parity (model-free, holds exactly for any barrier level):
+
+```
+knock-in price + knock-out price = vanilla price
+```
+
+This parity holds because every path either touches the barrier or doesn't, the knock-in and knock-out are mutually exclusive and exhaustive, so summing their payoffs recovers the vanilla payoff exactly. This is one of the strongest available sanity checks for barrier code, because it doesn't depend on comparing against a second pricing metohod, it's an exact identity that any correct implementation must satisfy.
+
+Validation result (S=100, K=100, T=1y, up-barrier=120, down-barrier=80):
+
+|   Variant     |     Price        |
+|---------------|------------------|
+| Up-and-out (call) | 1.3362 |
+| Up-and=in (call) | 9.0748 |
+| Sum | 10.4109 (vanilla call = 10.4506, error = 0.0396) |
+| Down-and-out (put) | 1.7521 |
+| Down-and-in (put) | 3.8291 |
+| Sum | 5.5812 (vanilla put = 5.5735, error = 0.0077)|
+
+Both parity checks hold within Monte Carlo noise (300k paths), and the relationship holds across a full sweep of barrier levels, not just at one point, confirmed by tracking Knock-Out + Knock-In against the vanilla price as B varies from 105 to 160.
+
+Note: barrier touch detection is evaluated at the resolution of the simulated path (n_steps), introducing a small discrete-monitoring bias relative to true continuous monitoring. The Broadie-Glasserman-Kou continuity correction would reduce this bias further but is not implemented here
+
 
 ### Heston Stochastic Volatility Model
 
