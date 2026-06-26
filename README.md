@@ -17,6 +17,9 @@ A from-scratch quantitative finance library for derivative pricing, risk managem
     - Greeks
     - Hedging Simulation
     - Portfolio Risk (VaR, ES)
+    - Implied Volatility Extraction
+    - Volatility Surface (SVI)
+    - GARCH(1,1) and the Volatility Risk Premium
 - Modules
 
 ## Project Structure
@@ -485,13 +488,13 @@ When $\lambda(t) = ab$ (constant), Hull-White reduces exactly to Vasicek$(r_0, a
 Single-factor short rate models share a structural limitation: every point on the yield curve is driven by the same random shock, so all maturities move in lockstep and are perfectly correlated. Real yield curves do not behave this way. Empirically, a principal component analysis of historical yield curve changes typically reveals three dominant factors: short-term, medium-term, and long-term moves. This model captures that structure with a hierarchical (cascade) dependency: the short rate reverts toward a medium-term factor, which in turn reverts toward a long-term factor, which reverts toward a fixed long-run mean $r \leftarrow m \leftarrow L \leftarrow \mu$.
 
 $$
-dr = a_r(m - r)\dt \qquad \text{(no diffusion term)}
+dr = a_r(m - r) dt \qquad \text{(no diffusion term)}
 $$
 $$
-dm = a_m(L - m)\dt + \sigma_m\\left(\rho\dW_1 + \sqrt{1-\rho^2}\dW_2\right)
+dm = a_m(L - m) dt + \sigma_m \left(\rho dW_1 + \sqrt{1-\rho^2} dW_2\right)
 $$
 $$
-dL = a_L(\mu - L)\dt + \sigma_L\dW_1
+dL = a_L(\mu - L) dt + \sigma_L dW_1
 $$
 
 $W_1$ and $W_2$ are independent Brownian motions.
@@ -517,7 +520,7 @@ Because each factor's drift depends only on the factor below it, the system is s
 Because $r(t)$ is not a simple linear combination of independent Gaussian factors with constant coefficients (the cascade drift makes $r$'s distribution depend on nested time-integrals of $m$ and $L$), bond prices are computed via Monte Carlo:
 
 $$
-P(0,T) = \mathbb{E}^{\mathbb{Q}}\\left[\exp\!\left(-\int_0^T r_s\,ds\right)\right]
+P(0,T) = \mathbb{E}^{\mathbb{Q}}\ [\exp \left(-\int_0^T r_s ds\right)]
 $$
 
 ### Greeks & PnL Attribution
@@ -533,11 +536,11 @@ For European options under BSM, all Greeks have exact closed-form expressions as
 | Delta | Call: $e^{-qT}N(d_1)$ &nbsp; Put: $e^{-qT}(N(d_1)-1)$ | $\partial V/\partial S$ — price change per \$1 spot move; call $\in(0,1)$, put $\in(-1,0)$ |
 | Gamma | $\dfrac{e^{-qT}\,n(d_1)}{S\,\sigma\sqrt{T}}$ | $\partial^2 V/\partial S^2$ — convexity; rate of change of delta (identical for calls & puts) |
 | Vega | $S\,e^{-qT}\,n(d_1)\sqrt{T}$ | $\partial V/\partial\sigma$ — price change per unit vol move (identical for calls & puts) |
-| Theta | Call: $-\dfrac{S e^{-qT}n(d_1)\sigma}{2\sqrt{T}} - rKe^{-rT}N(d_2) + qSe^{-qT}N(d_1)$ &nbsp; (÷ 365 per day) | $\partial V/\partial t$ — time decay; typically negative as expiry approaches |
+| Theta | Call: $-\dfrac{S e^{-qT}n(d_1)\sigma}{2\sqrt{T}} - rKe^{-rT}N(d_2) + qSe^{-qT}N(d_1)$ &nbsp;  | $\partial V/\partial t$ — time decay; typically negative as expiry approaches |
 | Rho | Call: $KTe^{-rT}N(d_2)$ &nbsp; Put: $-KTe^{-rT}N(-d_2)$ | $\partial V/\partial r$ — sensitivity to the risk-free rate |
 | Vanna | $-e^{-qT}\,n(d_1)\,\dfrac{d_2}{\sigma}$ | $\partial^2 V/\partial S\,\partial\sigma$ — cross-sensitivity of delta to vol (identical for calls & puts) |
 | Volga | $S\,e^{-qT}\,n(d_1)\sqrt{T}\,\dfrac{d_1 d_2}{\sigma}$ | $\partial^2 V/\partial\sigma^2$ — convexity of price in vol space; vol-of-vega (identical for calls & puts) |
-| Charm | Call: $-e^{-qT}\!\left[n(d_1)\dfrac{2(r-q)T - d_2\sigma\sqrt{T}}{2T\sigma\sqrt{T}} - q\,N(d_1)\right]$ &nbsp; (÷ 365 per day) | $\partial^2 V/\partial S\,\partial t$ — daily decay of delta; important for overnight hedgers |
+| Charm | Call: $-e^{-qT}\!\left[n(d_1)\dfrac{2(r-q)T - d_2\sigma\sqrt{T}}{2T\sigma\sqrt{T}} - q\,N(d_1)\right]$ &nbsp;  | $\partial^2 V/\partial S\,\partial t$ — daily decay of delta; important for overnight hedgers |
 
 #### Bump-and-reprice (universal)
 
@@ -545,9 +548,17 @@ For models without closed-form Greeks like the American options, Heston, etc., a
 
 $$
 \delta = [V(S+dS) - V(S-dS)] / (2*dS)  \qquad    dS = 1\% \text{ of S}
+$$
+$$
 \gamma = [V(S+dS) - 2V(S) + V(S-dS)] / dS^2
-\vega  = [V(\sigma + d\sigma) - V(\sigma - d\sigma)] / (2*d\sigma)  \qquad   d\sigma = 1\% of \sigma
+$$
+$$
+\nu  = [V(\sigma + d\sigma) - V(\sigma - d\sigma)] / (2*d\sigma)  \qquad   d\sigma = 1\% \text{ of } \sigma
+$$
+$$
 \theta = [V(T-dt) - V(T)] / dt / 365   \qquad     dt = 1 day
+$$
+$$
 \rho   = [V(r+dr) - V(r-dr)] / (2*dr)  \qquad    dr = 1 bp
 $$
 
@@ -561,7 +572,7 @@ Hedging a long call position means continuously selling delta shares of the unde
 Based on the Taylor expansion, the option value change can be decomposed as:
 
 $$
-dV \aprox \delta dS  +  \frac{1}{2} \gamma {dS}**2  +  \vega d\sigma  +  \theta dt  +  \epsilon
+dV \approx \delta dS  +  \frac{1}{2} \gamma {dS}^2  +  \nu d\sigma  +  \theta dt  +  \varepsilon
 $$
 
 Each term is accumulated (discounted) across all rebalancing steps:
@@ -579,7 +590,7 @@ $$ \mathbb{P}(\text{loss} > VaR) = 1 - \text{confidence} $$
 
 Conditional VaR (CVaR / Expected Shortfall) is the expected loss given that the loss exceeds VaR:
 
-$$ \text{CVaR} = \mathbb{E}[\text{loss} | \texr{loss} > \texr{VaR}] $$
+$$ \text{CVaR} = \mathbb{E}[\text{loss} | \text{loss} > \text{VaR}] $$
 
 CVaR is always $\ge$ VaR and is a coherent risk measure, satisfies monotonicity, and sub-additivity, which VaR does not hold.
 
@@ -603,3 +614,21 @@ $$
 #### Square-root rule of time
 
 Under i.i.d. returns, h-day VaR = 1-day VaR * sqrt(h).
+
+### Implied Volatility Extraction
+
+Raw market option quotes contain noise like wide bid-ask spreads on illiquid strikes, stale last-traded prices, and occasional violations of no-arbitrage bounds from data lags. Inverting BSM on unfiltered data produces unreliable or NaN implied vols. This project uses a cleaning pipeline in `src/calibration/implied_vol.py`, filtered out min price, max spread percentage, no-arbitrage bounds, and dropped failed inversions after inverting BSM.
+
+### Volatility Surface (SVI)
+
+$$
+w(k) = a + b * ( \rho * (k-m) + \sqrt{(k-m)^2 + \sigma^2} )
+$$
+$$
+k = \ln(\frac{K}{S})
+$$
+$$
+w(k) = \sigma_{BS}(k)^2 * T
+$$
+
+A raw grid of market implied vols is noisy and has gaps between strikes. The Stochastic Volatility Inspired parameterization, introduced by Gatheral, fits a smooth 5 parameter curve to each maturity slice that captures the smile/skew shape shile enabling clean interpolation and extrapolation.
